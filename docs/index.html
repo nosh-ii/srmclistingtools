@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SRMC Listing Tools</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 600px; margin: 20px auto; padding: 10px; }
+  #user-info img { border-radius: 50%; width: 64px; height: 64px; vertical-align: middle; }
+  button { margin: 10px 0; padding: 8px 16px; font-size: 16px; cursor: pointer; }
+  #admin-dashboard, #user-form { border: 1px solid #ccc; padding: 15px; margin-top: 20px; }
+  #timer { margin-top: 10px; color: #555; font-weight: bold; }
+</style>
+<script src="https://cdn.auth0.com/js/auth0-spa-js/1.31/auth0-spa-js.production.js"></script>
+</head>
+<body>
+
+<h1>SRMC Listing Tools</h1>
+
+<div id="login-area">
+  <button id="btn-login">Login with Discord</button>
+</div>
+
+<div id="user-info" style="display:none;">
+  <img id="user-pic" alt="User Avatar" />
+  <span id="user-name"></span>
+  <button id="btn-logout" style="margin-left: 15px;">Logout</button>
+  <div id="timer"></div>
+</div>
+
+<!-- Admin Dashboard -->
+<div id="admin-dashboard" style="display:none;">
+  <h2>Admin Dashboard</h2>
+  <p>Welcome, admin! You can manage listings here.</p>
+  <!-- TODO: Add admin controls here -->
+</div>
+
+<!-- Regular User Form -->
+<div id="user-form" style="display:none;">
+  <h2>User Listing Form</h2>
+  <p>Welcome! You can create a listing below.</p>
+  <!-- TODO: Add user listing form here -->
+</div>
+
+<script>
+  // Config - replace with your Auth0 details
+  const auth0Domain = "srmc-secure.us.auth0.com";
+  const auth0ClientId = "7HeenYCjrZVtFaA4t8LtGF4RC5zDb8zF";
+
+  // Admin Discord IDs (the numeric part after 'discord|' in the sub)
+  const adminDiscordIDs = [
+    "900512214161694730" // Add your admins here
+  ];
+
+  let auth0 = null;
+  let logoutTimer = null;
+
+  async function initAuth0() {
+    auth0 = await createAuth0Client({
+      domain: auth0Domain,
+      client_id: auth0ClientId,
+      cacheLocation: 'localstorage',
+      useRefreshTokens: true
+    });
+
+    if (window.location.search.includes("code=") && window.location.search.includes("state=")) {
+      try {
+        await auth0.handleRedirectCallback();
+      } catch (e) {
+        console.error("Error handling redirect callback:", e);
+      }
+      window.history.replaceState({}, document.title, "/");
+    }
+
+    updateUI();
+  }
+
+  async function updateUI() {
+    const isAuthenticated = await auth0.isAuthenticated();
+
+    if (isAuthenticated) {
+      const user = await auth0.getUser();
+
+      const discordId = user.sub.split("|").pop();
+
+      const isAdmin = adminDiscordIDs.includes(discordId);
+
+      document.getElementById("login-area").style.display = "none";
+      document.getElementById("user-info").style.display = "block";
+      document.getElementById("user-pic").src = user.picture;
+      document.getElementById("user-name").textContent = user.nickname || user.name || "User";
+
+      if (isAdmin) {
+        document.getElementById("admin-dashboard").style.display = "block";
+        document.getElementById("user-form").style.display = "none";
+        startAutoLogout(30 * 60); // 30 mins for admins
+      } else {
+        document.getElementById("admin-dashboard").style.display = "none";
+        document.getElementById("user-form").style.display = "block";
+        startAutoLogout(6 * 60 * 60); // 6 hours for regular users
+      }
+    } else {
+      document.getElementById("login-area").style.display = "block";
+      document.getElementById("user-info").style.display = "none";
+      document.getElementById("admin-dashboard").style.display = "none";
+      document.getElementById("user-form").style.display = "none";
+      clearAutoLogout();
+    }
+  }
+
+  function startAutoLogout(seconds) {
+    clearAutoLogout();
+    const timerEl = document.getElementById("timer");
+    let timeLeft = seconds;
+
+    timerEl.textContent = `Auto logout in ${formatTime(timeLeft)}`;
+
+    logoutTimer = setInterval(() => {
+      timeLeft--;
+      timerEl.textContent = `Auto logout in ${formatTime(timeLeft)}`;
+
+      if (timeLeft <= 0) {
+        clearInterval(logoutTimer);
+        logout();
+      }
+    }, 1000);
+  }
+
+  function clearAutoLogout() {
+    if (logoutTimer) {
+      clearInterval(logoutTimer);
+      logoutTimer = null;
+    }
+    document.getElementById("timer").textContent = "";
+  }
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}`;
+  }
+
+  async function login() {
+    await auth0.loginWithRedirect({
+      redirect_uri: window.location.origin
+    });
+  }
+
+  async function logout() {
+    clearAutoLogout();
+    await auth0.logout({
+      returnTo: window.location.origin
+    });
+    updateUI();
+  }
+
+  window.onload = async () => {
+    await initAuth0();
+    document.getElementById("btn-login").onclick = login;
+    document.getElementById("btn-logout").onclick = logout;
+  };
+</script>
+
+</body>
+</html>
